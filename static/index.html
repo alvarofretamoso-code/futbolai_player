@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FutAI — Player Analyzer</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07070f;
+      --surface:  #0e0e1c;
+      --surface2: #14142a;
+      --border:   #1e1e3a;
+      --green:    #00ff88;
+      --green2:   #00cc6a;
+      --red:      #ff3b5c;
+      --blue:     #3b82f6;
+      --yellow:   #f59e0b;
+      --text:     #e8e8f0;
+      --muted:    #6b6b8a;
+      --radius:   12px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo-dot {
+      width: 10px; height: 10px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      color: var(--text);
+    }
+    header h1 span { color: var(--green); }
+    header .beta {
+      margin-left: auto;
+      font-size: .68rem;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 3px 9px;
+      border-radius: 99px;
+      letter-spacing: .05em;
+    }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      padding: 40px 32px;
+      max-width: 860px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* ── STEP: Upload ── */
+    #step-upload { display: flex; flex-direction: column; gap: 28px; }
+
+    .api-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .api-row label {
+      font-size: .78rem;
+      color: var(--muted);
+      white-space: nowrap;
+      letter-spacing: .04em;
+    }
+    .api-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      color: var(--text);
+      font-size: .85rem;
+      outline: none;
+      transition: border .2s;
+    }
+    .api-row input:focus { border-color: var(--green); }
+    .key-status {
+      font-size: .78rem;
+      white-space: nowrap;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-weight: 600;
+    }
+    .key-status.ok  { background: rgba(0,255,136,.12); color: var(--green); }
+    .key-status.err { background: rgba(255,59,92,.12);  color: var(--red); }
+    .dropzone.locked {
+      opacity: .4;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 64px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.over {
+      border-color: var(--green);
+      background: rgba(0,255,136,.04);
+    }
+    .dropzone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .dropzone .icon {
+      font-size: 2.4rem;
+      margin-bottom: 12px;
+    }
+    .dropzone p { color: var(--muted); font-size: .9rem; }
+    .dropzone strong { color: var(--text); }
+
+    /* ── STEP: Select player ── */
+    #step-select { display: none; flex-direction: column; gap: 20px; }
+
+    .instruction-bar {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      font-size: .85rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .instruction-bar .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0;
+    }
+    .instruction-bar strong { color: var(--text); }
+
+    .canvas-wrapper {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+      cursor: crosshair;
+    }
+    #canvas-select {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .video-meta {
+      display: flex;
+      gap: 20px;
+      font-size: .78rem;
+      color: var(--muted);
+    }
+    .video-meta span strong { color: var(--green); }
+
+    /* ── STEP: Analyzing ── */
+    #step-analyzing { display: none; flex-direction: column; gap: 28px; }
+
+    .progress-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .progress-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .progress-bar-bg {
+      background: var(--border);
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--green2), var(--green));
+      transition: width .4s ease;
+      box-shadow: 0 0 10px rgba(0,255,136,.4);
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .78rem;
+      color: var(--muted);
+    }
+
+    .stage-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .stage-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: .82rem;
+      color: var(--muted);
+      transition: color .3s;
+    }
+    .stage-item.active { color: var(--text); }
+    .stage-item.done { color: var(--green); }
+    .stage-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--border); flex-shrink: 0;
+      transition: background .3s;
+    }
+    .stage-item.active .stage-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .stage-item.done .stage-dot { background: var(--green); }
+
+    /* ── STEP: Results ── */
+    #step-results { display: none; flex-direction: column; gap: 28px; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .results-header h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .results-header .meta { font-size: .78rem; color: var(--muted); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s, transform .15s;
+    }
+    .stat-card:hover { border-color: var(--green); transform: translateY(-2px); }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+    }
+    .stat-card.pass::before   { background: var(--green); }
+    .stat-card.tackle::before { background: var(--red); }
+    .stat-card.header::before { background: var(--blue); }
+    .stat-card.shot::before   { background: var(--yellow); }
+
+    .stat-card .action-icon { font-size: 1.6rem; margin-bottom: 8px; }
+    .stat-card .count {
+      font-size: 2.8rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-card.pass   .count { color: var(--green); }
+    .stat-card.tackle .count { color: var(--red); }
+    .stat-card.header .count { color: var(--blue); }
+    .stat-card.shot   .count { color: var(--yellow); }
+    .stat-card .label {
+      font-size: .72rem;
+      letter-spacing: .08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* Timeline */
+    .section-title {
+      font-size: .75rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .timeline {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .timeline-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: .83rem;
+    }
+    .timeline-row:last-child { border-bottom: none; }
+    .t-time {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      width: 52px;
+      flex-shrink: 0;
+    }
+    .t-badge {
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .t-badge.PASS   { background: rgba(0,255,136,.12); color: var(--green); }
+    .t-badge.TACKLE { background: rgba(255,59,92,.12); color: var(--red); }
+    .t-badge.HEADER { background: rgba(59,130,246,.12); color: var(--blue); }
+    .t-badge.SHOT   { background: rgba(245,158,11,.12); color: var(--yellow); }
+
+    .t-conf {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: .75rem;
+    }
+
+    .empty-timeline {
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+      font-size: .85rem;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 11px 24px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      letter-spacing: .04em;
+    }
+    .btn:hover { opacity: .88; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary {
+      background: var(--green);
+      color: #000;
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+    .action-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Error ── */
+    .error-banner {
+      background: rgba(255,59,92,.1);
+      border: 1px solid rgba(255,59,92,.3);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      color: var(--red);
+      font-size: .85rem;
+      display: none;
+    }
+
+    /* ── Tooltip on canvas ── */
+    .canvas-hint {
+      position: absolute;
+      top: 12px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.75);
+      color: var(--green);
+      font-size: .75rem;
+      padding: 6px 14px;
+      border-radius: 99px;
+      pointer-events: none;
+      border: 1px solid var(--green);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot"></div>
+  <h1>FUT<span>AI</span></h1>
+  <span class="beta">BETA · MVP</span>
+</header>
+
+<main>
+
+  <!-- ─────────── STEP 1: Upload ─────────── -->
+  <div id="step-upload">
+    <div class="api-row">
+      <label>GEMINI API KEY</label>
+      <input type="password" id="api-key" placeholder="AIza..." autocomplete="off" />
+      <button class="btn btn-secondary" id="btn-verify-key">Verificar</button>
+      <span id="key-status" class="key-status" style="display:none"></span>
+    </div>
+
+    <div class="dropzone locked" id="dropzone">
+      <input type="file" id="file-input" accept="video/*" />
+      <div class="icon">🎬</div>
+      <p><strong>Arrastrá tu video</strong> o hacé click para seleccionarlo</p>
+      <p style="margin-top:6px;font-size:.75rem">MP4, MOV, AVI — máx 500MB</p>
+    </div>
+
+    <div class="error-banner" id="upload-error"></div>
+  </div>
+
+  <!-- ─────────── STEP 2: Select player ─────────── -->
+  <div id="step-select">
+    <div class="instruction-bar">
+      <div class="dot"></div>
+      <span><strong>Seleccioná al jugador</strong> — hacé click y arrastrá para dibujar un rectángulo sobre él</span>
+    </div>
+
+    <div class="canvas-wrapper" id="canvas-wrapper">
+      <canvas id="canvas-select"></canvas>
+      <div class="canvas-hint" id="canvas-hint">↖ Click y arrastrá para seleccionar</div>
+    </div>
+
+    <div class="video-meta" id="video-meta"></div>
+
+    <div class="action-row">
+      <button class="btn btn-primary" id="btn-analyze" disabled>Analizar jugador →</button>
+      <button class="btn btn-ghost" id="btn-reset-sel">Volver a subir</button>
+    </div>
+
+    <div class="error-banner" id="select-error"></div>
+  </div>
+
+  <!-- ─────────── STEP 3: Analyzing ─────────── -->
+  <div id="step-analyzing">
+    <div class="progress-card">
+      <div class="progress-title">
+        <div class="spinner"></div>
+        <span id="progress-title-text">Iniciando análisis...</span>
+      </div>
+      <div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+        <div class="progress-label">
+          <span id="progress-status">Cargando...</span>
+          <span id="progress-pct">0%</span>
+        </div>
+      </div>
+      <div class="stage-list" id="stage-list">
+        <div class="stage-item" data-stage="tracking">
+          <div class="stage-dot"></div> Tracking del jugador con OpenCV CSRT
+        </div>
+        <div class="stage-item" data-stage="analyzing">
+          <div class="stage-dot"></div> Análisis de acciones con Gemini
+        </div>
+        <div class="stage-item" data-stage="done">
+          <div class="stage-dot"></div> Procesando resultados
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── STEP 4: Results ─────────── -->
+  <div id="step-results">
+    <div class="results-header">
+      <div>
+        <h2>📊 Resultados del análisis</h2>
+        <div class="meta" id="results-meta"></div>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" id="btn-export">⬇ Exportar Excel</button>
+        <button class="btn btn-ghost" id="btn-new">Nuevo análisis</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card pass">
+        <div class="action-icon">🟢</div>
+        <div class="count" id="count-pass">0</div>
+        <div class="label">Pases</div>
+      </div>
+      <div class="stat-card tackle">
+        <div class="action-icon">🔴</div>
+        <div class="count" id="count-tackle">0</div>
+        <div class="label">Barridas</div>
+      </div>
+      <div class="stat-card header">
+        <div class="action-icon">🔵</div>
+        <div class="count" id="count-header">0</div>
+        <div class="label">Cabezazos</div>
+      </div>
+      <div class="stat-card shot">
+        <div class="action-icon">🟡</div>
+        <div class="count" id="count-shot">0</div>
+        <div class="label">Disparos</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Línea de tiempo</div>
+      <div class="timeline" id="timeline-container"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ─── State ──────────────────────────────────────────────────
+let sessionId = null;
+let videoMeta = {};
+let bbox = null;       // {x,y,w,h} in image coords
+let pollTimer = null;
+
+// Canvas drawing state
+let drawing = false;
+let startX = 0, startY = 0;
+let imgNatW = 0, imgNatH = 0;
+let imgEl = null;
+
+// ─── DOM ────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const steps = {
+  upload:    $('step-upload'),
+  select:    $('step-select'),
+  analyzing: $('step-analyzing'),
+  results:   $('step-results'),
+};
+
+function showStep(name) {
+  Object.entries(steps).forEach(([k, el]) => {
+    el.style.display = k === name ? 'flex' : 'none';
+  });
+}
+showStep('upload');
+
+// ─── Helpers ────────────────────────────────────────────────
+function showError(el, msg) {
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideError(el) { el.style.display = 'none'; }
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+function animateCount(el, target, duration = 600) {
+  const start = performance.now();
+  const from = parseInt(el.textContent) || 0;
+  function step(now) {
+    const p = Math.min((now - start) / duration, 1);
+    const ease = p < .5 ? 2*p*p : -1+(4-2*p)*p;
+    el.textContent = Math.round(from + (target - from) * ease);
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── API Key validation ─────────────────────────────────────
+let keyVerified = false;
+
+async function verifyKey() {
+  const apiKey = $('api-key').value.trim();
+  const statusEl = $('key-status');
+  const btn = $('btn-verify-key');
+  if (!apiKey) { return; }
+
+  btn.disabled = true;
+  btn.textContent = '...';
+  statusEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/validate-key', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    if (res.ok) {
+      keyVerified = true;
+      statusEl.className = 'key-status ok';
+      statusEl.textContent = 'Conectado';
+      statusEl.style.display = 'inline';
+      $('dropzone').classList.remove('locked');
+      hideError($('upload-error'));
+    } else {
+      const err = await res.json();
+      throw new Error(err.detail || 'Key inválida');
+    }
+  } catch(e) {
+    keyVerified = false;
+    statusEl.className = 'key-status err';
+    statusEl.textContent = 'Error';
+    statusEl.style.display = 'inline';
+    $('dropzone').classList.add('locked');
+    showError($('upload-error'), 'API key inválida: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Verificar';
+}
+
+$('btn-verify-key').addEventListener('click', verifyKey);
+$('api-key').addEventListener('keydown', e => { if (e.key === 'Enter') verifyKey(); });
+$('api-key').addEventListener('input', () => {
+  keyVerified = false;
+  $('key-status').style.display = 'none';
+  $('dropzone').classList.add('locked');
+});
+
+// ─── STEP 1: Upload ─────────────────────────────────────────
+const dropzone  = $('dropzone');
+const fileInput = $('file-input');
+
+['dragenter','dragover'].forEach(e => dropzone.addEventListener(e, ev => {
+  ev.preventDefault(); dropzone.classList.add('over');
+}));
+['dragleave','drop'].forEach(e => dropzone.addEventListener(e, ev => {
+  ev.preventDefault(); dropzone.classList.remove('over');
+  if (e === 'drop') handleFile(ev.dataTransfer.files[0]);
+}));
+fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!keyVerified) { showError($('upload-error'), 'Verificá tu Gemini API key primero.'); return; }
+  hideError($('upload-error'));
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  dropzone.innerHTML = '<div class="spinner" style="margin:0 auto"></div><p style="margin-top:12px;color:var(--muted)">Subiendo video...</p>';
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    sessionId = data.session_id;
+    videoMeta  = data;
+    loadSelectionStep(data);
+  } catch(e) {
+    dropzone.innerHTML = `<div class="icon">🎬</div><p><strong>Arrastrá tu video</strong> o hacé click para seleccionarlo</p>`;
+    showError($('upload-error'), 'Error al subir el video: ' + e.message);
+  }
+}
+
+// ─── STEP 2: Select player ──────────────────────────────────
+function loadSelectionStep(data) {
+  showStep('select');
+
+  const canvas = $('canvas-select');
+  const ctx    = canvas.getContext('2d');
+
+  imgEl   = new Image();
+  imgNatW = data.width;
+  imgNatH = data.height;
+
+  imgEl.onload = () => {
+    canvas.width  = imgNatW;
+    canvas.height = imgNatH;
+    ctx.drawImage(imgEl, 0, 0);
+    // Show hint briefly
+    setTimeout(() => $('canvas-hint').style.opacity = '0', 3000);
+  };
+  imgEl.src = 'data:image/jpeg;base64,' + data.first_frame;
+
+  $('video-meta').innerHTML =
+    `<span>Duración: <strong>${fmtTime(data.duration)}</strong></span>` +
+    `<span>FPS: <strong>${Math.round(data.fps)}</strong></span>` +
+    `<span>Resolución: <strong>${data.width}×${data.height}</strong></span>`;
+
+  // ── Canvas drawing ──
+  bbox = null;
+  $('btn-analyze').disabled = true;
+
+  const wrapper = $('canvas-wrapper');
+
+  function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = imgNatW / rect.width;
+    const scaleY = imgNatH / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: Math.round((clientX - rect.left) * scaleX),
+      y: Math.round((clientY - rect.top)  * scaleY),
+    };
+  }
+
+  function redraw(rx, ry, rw, rh) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(imgEl, 0, 0);
+    if (rw && rh) {
+      // Dim outside
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(rx, ry, rw, rh);
+      ctx.drawImage(imgEl, rx, ry, rw, rh, rx, ry, rw, rh);
+      // Red box
+      ctx.strokeStyle = '#ff2244';
+      ctx.lineWidth   = 3;
+      ctx.strokeRect(rx, ry, rw, rh);
+      // Corner accents
+      const cl = Math.min(rw, rh) / 5;
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth   = 3;
+      [[rx,ry],[rx+rw,ry],[rx,ry+rh],[rx+rw,ry+rh]].forEach(([px,py],i) => {
+        const dx = i%2===0?cl:-cl, dy = i<2?cl:-cl;
+        ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+dx,py); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+dy); ctx.stroke();
+      });
+      // Label
+      ctx.fillStyle = '#ff2244';
+      ctx.fillRect(rx, ry - 26, 80, 22);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText('PLAYER', rx + 6, ry - 9);
+    }
+  }
+
+  canvas.onmousedown = canvas.ontouchstart = e => {
+    e.preventDefault();
+    const {x, y} = canvasCoords(e);
+    startX = x; startY = y;
+    drawing = true;
+    $('canvas-hint').style.display = 'none';
+  };
+
+  canvas.onmousemove = canvas.ontouchmove = e => {
+    if (!drawing) return;
+    e.preventDefault();
+    const {x, y} = canvasCoords(e);
+    const rx = Math.min(startX, x), ry = Math.min(startY, y);
+    const rw = Math.abs(x - startX),  rh = Math.abs(y - startY);
+    redraw(rx, ry, rw, rh);
+  };
+
+  canvas.onmouseup = canvas.ontouchend = e => {
+    if (!drawing) return;
+    drawing = false;
+    const {x, y} = canvasCoords(e);
+    const rx = Math.min(startX, x), ry = Math.min(startY, y);
+    const rw = Math.abs(x - startX),  rh = Math.abs(y - startY);
+    if (rw > 15 && rh > 15) {
+      bbox = {x: rx, y: ry, w: rw, h: rh};
+      $('btn-analyze').disabled = false;
+      redraw(rx, ry, rw, rh);
+    }
+  };
+}
+
+$('btn-reset-sel').addEventListener('click', () => {
+  sessionId = null; bbox = null;
+  dropzone.innerHTML = `<input type="file" id="file-input" accept="video/*" /><div class="icon">🎬</div><p><strong>Arrastrá tu video</strong> o hacé click para seleccionarlo</p><p style="margin-top:6px;font-size:.75rem">MP4, MOV, AVI — máx 500MB</p>`;
+  document.getElementById('file-input').addEventListener('change', () => handleFile(document.getElementById('file-input').files[0]));
+  showStep('upload');
+});
+
+$('btn-analyze').addEventListener('click', startAnalysis);
+
+async function startAnalysis() {
+  if (!bbox) return;
+  const apiKey = $('api-key').value.trim();
+  hideError($('select-error'));
+  showStep('analyzing');
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        x: bbox.x, y: bbox.y,
+        width: bbox.w, height: bbox.h,
+        api_key: apiKey,
+      })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    pollProgress();
+  } catch(e) {
+    showStep('select');
+    showError($('select-error'), 'Error al iniciar análisis: ' + e.message);
+  }
+}
+
+// ─── STEP 3: Progress polling ────────────────────────────────
+const STAGE_ORDER = ['tracking', 'analyzing', 'done'];
+const STAGE_LABELS = {
+  tracking:  'Trackeando al jugador...',
+  analyzing: 'Analizando acciones con Gemini...',
+  done:      'Finalizando...',
+};
+
+function updateStages(currentStatus) {
+  const idx = STAGE_ORDER.indexOf(currentStatus);
+  STAGE_ORDER.forEach((stage, i) => {
+    const el = document.querySelector(`[data-stage="${stage}"]`);
+    if (!el) return;
+    el.classList.remove('active','done');
+    if (i < idx) el.classList.add('done');
+    else if (i === idx) el.classList.add('active');
+  });
+}
+
+function pollProgress() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/progress/${sessionId}`);
+      const data = await res.json();
+
+      const pct = data.progress || 0;
+      $('progress-fill').style.width = pct + '%';
+      $('progress-pct').textContent  = pct + '%';
+
+      updateStages(data.status);
+
+      const label = STAGE_LABELS[data.status] || 'Procesando...';
+      $('progress-title-text').textContent = label;
+      $('progress-status').textContent = data.frames_tracked
+        ? `${data.frames_tracked} frames trackeados`
+        : label;
+
+      if (data.status === 'done') {
+        clearInterval(pollTimer);
+        showResults(data.analysis);
+      } else if (data.status === 'error') {
+        clearInterval(pollTimer);
+        showStep('select');
+        showError($('select-error'), '❌ ' + (data.error || 'Error desconocido'));
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }, 1500);
+}
+
+// ─── STEP 4: Results ────────────────────────────────────────
+function showResults(analysis) {
+  showStep('results');
+
+  const { counts, timeline, video_duration, frames_analyzed } = analysis;
+
+  $('results-meta').textContent =
+    `${frames_analyzed} frames analizados · Duración: ${fmtTime(video_duration)}`;
+
+  // Animate counters
+  setTimeout(() => {
+    animateCount($('count-pass'),   counts.PASS   || 0);
+    animateCount($('count-tackle'), counts.TACKLE || 0, 700);
+    animateCount($('count-header'), counts.HEADER || 0, 800);
+    animateCount($('count-shot'),   counts.SHOT   || 0, 900);
+  }, 100);
+
+  // Timeline
+  const tl = $('timeline-container');
+  if (!timeline || timeline.length === 0) {
+    tl.innerHTML = '<div class="empty-timeline">No se detectaron acciones con alta confianza.<br>Intentá con un video más claro o seleccioná al jugador más precisamente.</div>';
+  } else {
+    const typeLabel = { PASS: 'Pase', TACKLE: 'Barrida', HEADER: 'Cabezazo', SHOT: 'Disparo' };
+    tl.innerHTML = timeline.map(ev => `
+      <div class="timeline-row">
+        <span class="t-time">${ev.timestamp.toFixed(1)}s</span>
+        <span class="t-badge ${ev.type}">${typeLabel[ev.type] || ev.type}</span>
+        <span class="t-conf">${Math.round((ev.confidence||0)*100)}% confianza</span>
+      </div>
+    `).join('');
+  }
+}
+
+$('btn-export').addEventListener('click', () => {
+  window.location.href = `/export/${sessionId}`;
+});
+
+$('btn-new').addEventListener('click', () => {
+  clearInterval(pollTimer);
+  sessionId = null; bbox = null; videoMeta = {};
+  dropzone.innerHTML = `<input type="file" id="file-input" accept="video/*" /><div class="icon">🎬</div><p><strong>Arrastrá tu video</strong> o hacé click para seleccionarlo</p><p style="margin-top:6px;font-size:.75rem">MP4, MOV, AVI — máx 500MB</p>`;
+  document.getElementById('file-input').addEventListener('change', () => handleFile(document.getElementById('file-input').files[0]));
+  showStep('upload');
+});
+</script>
+</body>
+</html>
